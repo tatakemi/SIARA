@@ -1,47 +1,46 @@
 import flet as ft
-from models import LostAnimal, FoundReport, session_scope #
 
-def do_logout(state, go_to_login_func):
-    state["current_user"] = None
-    go_to_login_func()
-
-def home_view(page, state, go_to_login_func, go_to_lost_reg_func, go_to_found_reg_func, go_to_my_posts_func, go_to_map_func):
+# A assinatura AGORA tem 8 argumentos
+def show_home(page, state, go_to_login_func, go_to_lost_reg_func, go_to_found_reg_func, go_to_my_posts_func, go_to_map_func, do_logout_func):
     page.controls.clear()
     cur = state.get("current_user")
     
+    # 1. Se não houver usuário logado, retorna para o login
     if not cur:
         go_to_login_func() 
         return
-        
-    logout_func = lambda e: do_logout(state, go_to_login_func)
 
-    header = ft.Text(f"Bem-vindo(a), {cur['username']}", size=18)
-    btn_lost = ft.ElevatedButton("Registrar animal perdido", on_click=go_to_lost_reg_func)
-    btn_found = ft.ElevatedButton("Registrar animal encontrado", on_click=go_to_found_reg_func)
-    btn_my = ft.ElevatedButton("Meus posts", on_click=go_to_my_posts_func)
-    btn_map = ft.ElevatedButton("Abrir mapa (browser)", on_click=go_to_map_func)
-    btn_logout = ft.TextButton("Sair", on_click=logout_func)
+    # 2. Definição do cabeçalho com o botão de Logout
+    header = ft.Row([
+        ft.Text(f"Bem-vindo, {cur['username']}!", size=24, weight=ft.FontWeight.BOLD),
+        # Usa o novo argumento 'do_logout_func'
+        ft.ElevatedButton("Logout", on_click=do_logout_func, 
+                          style=ft.ButtonStyle(bgcolor=ft.Colors.RED_400, color=ft.Colors.WHITE))
+    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+    
+    # 3. Definição dos botões de navegação
+    navigation_buttons = ft.Row(
+        [
+            ft.ElevatedButton("Cadastrar Animal Perdido", on_click=go_to_lost_reg_func),
+            ft.ElevatedButton("Relatar Animal Encontrado", on_click=go_to_found_reg_func),
+            ft.ElevatedButton("Meus Posts", on_click=go_to_my_posts_func),
+            ft.ElevatedButton("Ver Mapa", on_click=go_to_map_func),
+        ],
+        wrap=True,
+        alignment=ft.MainAxisAlignment.CENTER
+    )
 
-    lost_list = ft.ListView(expand=True, spacing=10)
-    found_list = ft.ListView(expand=True, spacing=10)
-
-    with session_scope() as s: #
-        # Carrega dados do DB
-        for a in s.query(LostAnimal).order_by(LostAnimal.id.desc()).all(): #
-            owner_name = a.owner.username if a.owner else "—"
-            info = f"Tutor: {owner_name}\nOnde foi perdido: {a.lost_location or ''}\nDescrição: {a.desc_animal or ''}"
-            if a.latitude and a.longitude:
-                info += f"\nCoordenadas: {a.latitude:.6f}, {a.longitude:.6f}"
-            lost_list.controls.append(ft.Container(ft.ListTile(title=ft.Text(a.name), subtitle=ft.Text(info)), bgcolor=ft.Colors.BLACK12, padding=12, margin=3, border_radius=8))
-        
-        for r in s.query(FoundReport).order_by(FoundReport.id.desc()).all(): #
-            finder_name = r.finder.username if r.finder else "—"
-            info = f"Quem encontrou: {finder_name}\nOnde foi encontrado: {r.found_location or ''}\nDescrição: {r.found_description or ''}"
-            if r.latitude and r.longitude:
-                info += f"\nCoordenadas: {r.latitude:.6f}, {r.longitude:.6f}"
-            found_list.controls.append(ft.Container(ft.ListTile(title=ft.Text(r.species or "Animal encontrado"), subtitle=ft.Text(info)), bgcolor=ft.Colors.INDIGO_ACCENT, padding=12, margin=3, border_radius=8))
-
-    page.add(header, ft.Row([btn_lost, btn_found, btn_my, btn_map, btn_logout]), ft.Text("Animais perdidos (Feed):"), lost_list, ft.Text("Animais encontrados (Feed):"), found_list)
+    # 4. Adição dos controles à página
+    page.add(
+        header,
+        ft.Divider(),
+        navigation_buttons,
+        ft.Text("Use o menu acima para gerenciar seus posts e o mapa para ver posts de outros usuários.", 
+                size=14, color=ft.Colors.BLACK54)
+    )
     page.update()
 
-show_home = home_view
+# Garante que a função exportada é show_home
+# show_home é a própria função, mas definida por convenção
+# Se o seu arquivo só tiver 'show_home', você pode remover esta linha
+# show_home = show_home
