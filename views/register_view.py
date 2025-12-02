@@ -1,61 +1,40 @@
-# views/register_view.py
 import flet as ft
-from models import User, session_scope
+from models import User, session_scope #
 
-class RegisterView(ft.UserControl):
-    """View para a tela de Registro de novo usuário."""
-    def __init__(self, page, state, show_snack, show_home, show_login):
-        super().__init__()
-        self.page = page
-        self.state = state
-        self.show_snack = show_snack
-        self.show_home = show_home
-        self.show_login = show_login
-        
-        self.username = ft.TextField(label="Usuário")
-        self.contact = ft.TextField(label="Contato (telefone/email)")
-        self.password = ft.TextField(label="Senha", password=True, can_reveal_password=True)
-        self.password2 = ft.TextField(label="Confirmar senha", password=True, can_reveal_password=True)
-        self.msg = ft.Text("", color=ft.Colors.RED)
+def register_view(page, state, go_to_home_func, go_to_login_func, show_snack_func):
+    page.controls.clear()
+    
+    username = ft.TextField(label="Usuário")
+    contact = ft.TextField(label="Contato (telefone/email)")
+    password = ft.TextField(label="Senha", password=True, can_reveal_password=True)
+    password2 = ft.TextField(label="Confirmar senha", password=True, can_reveal_password=True)
+    msg = ft.Text("", color=ft.Colors.RED)
 
-    def do_register(self, e):
-        uname = self.username.value.strip()
-        pwd = self.password.value or ""
-        pwd2 = self.password2.value or ""
-        if not uname:
-            self.msg.value = "Insira o nome de usuário"
-            self.update()
-            return
+    def do_register(ev):
+        uname = username.value.strip()
+        pwd = password.value or ""
+        pwd2 = password2.value or ""
         if pwd != pwd2 or not pwd:
-            self.msg.value = "As senhas não coincidem ou estão vazias"
-            self.update()
+            msg.value = "As senhas não coincidem ou estão vazias"
+            page.update()
             return
-        
-        with session_scope() as s:
-            existing = s.query(User).filter_by(username=uname).first()
+        with session_scope() as s: #
+            existing = s.query(User).filter_by(username=uname).first() #
             if existing:
-                self.msg.value = "Usuário já existe"
-                self.update()
+                msg.value = "Usuário já existe"
+                page.update()
                 return
-            u = User(username=uname, contact=self.contact.value.strip())
+            u = User(username=uname, contact=contact.value.strip())
             u.set_password(pwd)
             s.add(u)
             s.flush()
-            self.state["current_user"] = {"id": u.id, "username": u.username}
+            state["current_user"] = {"id": u.id, "username": u.username}
+        show_snack_func("Conta criada. Você está logado.")
+        go_to_home_func() 
         
-        self.show_snack("Account created; you are now logged in.")
-        self.show_home()
+    page.add(ft.Text("Registro", size=20), username, contact, password, password2,
+             ft.Row([ft.ElevatedButton("Registrar", on_click=do_register),
+                     ft.TextButton("Voltar para Login", on_click=go_to_login_func)]), msg)
+    page.update()
 
-    def build(self):
-        return ft.Column([
-            ft.Text("Registro de Usuário", size=20),
-            self.username,
-            self.contact,
-            self.password,
-            self.password2,
-            ft.Row([
-                ft.ElevatedButton("Registrar", on_click=self.do_register),
-                ft.TextButton("Já tenho uma conta", on_click=self.show_login)
-            ]),
-            self.msg
-        ])
+show_register = register_view

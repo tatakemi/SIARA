@@ -1,64 +1,47 @@
-# views/home_view.py
 import flet as ft
-from models import LostAnimal, FoundReport, session_scope
+from models import LostAnimal, FoundReport, session_scope #
 
-class HomeView(ft.UserControl):
-    """View para a tela principal, mostrando a lista de posts globais."""
-    def __init__(self, page, state, show_snack, show_login, show_lost_reg, show_found_reg, show_my_posts, show_map):
-        super().__init__()
-        self.page = page
-        self.state = state
-        self.show_snack = show_snack
-        self.show_login = show_login
-        self.show_lost_reg = show_lost_reg
-        self.show_found_reg = show_found_reg
-        self.show_my_posts = show_my_posts
-        self.show_map = show_map
+def do_logout(state, go_to_login_func):
+    state["current_user"] = None
+    go_to_login_func()
 
-    def do_logout(self, e):
-        self.state["current_user"] = None
-        self.show_login()
-
-    def build(self):
-        cur = self.state["current_user"]
-        if not cur:
-            # Caso o usuário não esteja logado, redireciona para o login
-            self.show_login() 
-            return ft.Container(ft.Text("Redirecionando...")) # Retorna um placeholder
-
-        header = ft.Text(f"Bem-vindo(a), {cur['username']}", size=18)
+def home_view(page, state, go_to_login_func, go_to_lost_reg_func, go_to_found_reg_func, go_to_my_posts_func, go_to_map_func):
+    page.controls.clear()
+    cur = state.get("current_user")
+    
+    if not cur:
+        go_to_login_func() 
+        return
         
-        btn_lost = ft.ElevatedButton("Registrar animal perdido", on_click=self.show_lost_reg)
-        btn_found = ft.ElevatedButton("Registrar animal encontrado", on_click=self.show_found_reg)
-        btn_my = ft.ElevatedButton("Meus posts", on_click=self.show_my_posts)
-        btn_map = ft.ElevatedButton("Abrir mapa (browser)", on_click=self.show_map)
-        btn_logout = ft.TextButton("Sair", on_click=self.do_logout)
+    logout_func = lambda e: do_logout(state, go_to_login_func)
 
-        lost_list = ft.ListView(expand=True, spacing=10)
-        found_list = ft.ListView(expand=True, spacing=10)
+    header = ft.Text(f"Bem-vindo(a), {cur['username']}", size=18)
+    btn_lost = ft.ElevatedButton("Registrar animal perdido", on_click=go_to_lost_reg_func)
+    btn_found = ft.ElevatedButton("Registrar animal encontrado", on_click=go_to_found_reg_func)
+    btn_my = ft.ElevatedButton("Meus posts", on_click=go_to_my_posts_func)
+    btn_map = ft.ElevatedButton("Abrir mapa (browser)", on_click=go_to_map_func)
+    btn_logout = ft.TextButton("Sair", on_click=logout_func)
 
-        with session_scope() as s:
-            # Popula a lista de animais perdidos
-            for a in s.query(LostAnimal).order_by(LostAnimal.id.desc()).all():
-                owner_name = a.owner.username if a.owner else "—"
-                info = f"Tutor: {owner_name}\nOnde foi perdido: {a.lost_location or ''}\nDescrição: {a.desc_animal or ''}"
-                if a.latitude and a.longitude:
-                    info += f"\nCoordenadas: {a.latitude:.6f}, {a.longitude:.6f}"
-                lost_list.controls.append(ft.Container(ft.ListTile(title=ft.Text(a.name), subtitle=ft.Text(info)), bgcolor=ft.Colors.BLACK12, padding=12, margin=3, border_radius=8))
-            
-            # Popula a lista de relatórios de encontrados
-            for r in s.query(FoundReport).order_by(FoundReport.id.desc()).all():
-                finder_name = r.finder.username if r.finder else "—"
-                info = f"Quem encontrou: {finder_name}\nOnde foi encontrado: {r.found_location or ''}\nDescrição: {r.found_description or ''}"
-                if r.latitude and r.longitude:
-                    info += f"\nCoordenadas: {r.latitude:.6f}, {r.longitude:.6f}"
-                found_list.controls.append(ft.Container(ft.ListTile(title=ft.Text(r.species or "Animal encontrado"), subtitle=ft.Text(info)), bgcolor=ft.Colors.INDIGO_ACCENT, padding=12, margin=3, border_radius=8))
+    lost_list = ft.ListView(expand=True, spacing=10)
+    found_list = ft.ListView(expand=True, spacing=10)
 
-        return ft.Column([
-            header,
-            ft.Row([btn_lost, btn_found, btn_my, btn_map, btn_logout]),
-            ft.Text("Animais perdidos:"), 
-            lost_list, 
-            ft.Text("Animais encontrados:"), 
-            found_list
-        ])
+    with session_scope() as s: #
+        # Carrega dados do DB
+        for a in s.query(LostAnimal).order_by(LostAnimal.id.desc()).all(): #
+            owner_name = a.owner.username if a.owner else "—"
+            info = f"Tutor: {owner_name}\nOnde foi perdido: {a.lost_location or ''}\nDescrição: {a.desc_animal or ''}"
+            if a.latitude and a.longitude:
+                info += f"\nCoordenadas: {a.latitude:.6f}, {a.longitude:.6f}"
+            lost_list.controls.append(ft.Container(ft.ListTile(title=ft.Text(a.name), subtitle=ft.Text(info)), bgcolor=ft.Colors.BLACK12, padding=12, margin=3, border_radius=8))
+        
+        for r in s.query(FoundReport).order_by(FoundReport.id.desc()).all(): #
+            finder_name = r.finder.username if r.finder else "—"
+            info = f"Quem encontrou: {finder_name}\nOnde foi encontrado: {r.found_location or ''}\nDescrição: {r.found_description or ''}"
+            if r.latitude and r.longitude:
+                info += f"\nCoordenadas: {r.latitude:.6f}, {r.longitude:.6f}"
+            found_list.controls.append(ft.Container(ft.ListTile(title=ft.Text(r.species or "Animal encontrado"), subtitle=ft.Text(info)), bgcolor=ft.Colors.INDIGO_ACCENT, padding=12, margin=3, border_radius=8))
+
+    page.add(header, ft.Row([btn_lost, btn_found, btn_my, btn_map, btn_logout]), ft.Text("Animais perdidos (Feed):"), lost_list, ft.Text("Animais encontrados (Feed):"), found_list)
+    page.update()
+
+show_home = home_view
