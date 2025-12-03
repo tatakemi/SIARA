@@ -47,11 +47,20 @@ class User(Base):
     def __repr__(self):
         return f"<User(id={self.id}, username='{self.username}')>"
 
-    def set_password(self, password: str):
+    # NOVO: Usa @property para definir a senha (apenas escrita)
+    @property
+    def password(self):
+        raise AttributeError('password is not a readable attribute')
+
+    @password.setter
+    def password(self, password):
+        # Gera o hash com bcrypt
         password_bytes = password.encode('utf-8')
-        hashed = bcrypt.hashpw(password_bytes, bcrypt.gensalt())
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(password_bytes, salt)
         self._password_hash = hashed.decode('utf-8')
 
+    # Mantém o check_password para verificar o login
     def check_password(self, password: str) -> bool:
         password_bytes = password.encode('utf-8')
         if not self._password_hash:
@@ -71,6 +80,9 @@ class LostAnimal(Base):
     # new location fields
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
+    
+    # REINTRODUZIDO: NOVO CAMPO PARA O URL DA IMAGEM
+    image_url = Column(String)
 
     owner_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     owner = relationship("User", back_populates="lost_animals")
@@ -89,6 +101,9 @@ class FoundReport(Base):
     # new location fields
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
+    
+    # REINTRODUZIDO: NOVO CAMPO PARA O URL DA IMAGEM
+    image_url = Column(String)
 
     finder_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     finder = relationship("User", back_populates="found_reports")

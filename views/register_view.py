@@ -29,7 +29,7 @@ def show_register(page, state, go_to_home_func, go_to_login_func, show_snack_fun
                 return
             
             u = User(username=uname, contact=contact.value.strip())
-            u.set_password(pwd)
+            u.password = pwd
             s.add(u)
             s.flush()
             state["current_user"] = {"id": u.id, "username": u.username}
