@@ -1,6 +1,7 @@
 import flet as ft
 from models import LostAnimal, FoundReport, session_scope
-# Importa a função de card (AGORA ATUALIZADA)
+from sqlalchemy import or_
+# Importa a função de card (AGORA ATUALIZADA - que requer 'page')
 from views.my_posts_view import build_post_card 
 
 # A assinatura AGORA tem 8 argumentos
@@ -16,123 +17,14 @@ def show_home(page, state, go_to_login_func, go_to_lost_reg_func, go_to_found_re
     # Lista de controles para exibir os posts
     posts_list = ft.ListView(expand=1, spacing=10, padding=20)
     
-    # --- FUNÇÃO PARA CARREGAR E EXIBIR OS POSTS (LÓGICA DE FILTRO) ---
-    def load_and_display_posts(search_term="", species_filter="", type_filter=""):
-        posts_list.controls.clear()
-        
-        try:
-            with session_scope() as s:
-                # 4.1. Carregar todos os posts
-                lost_animals = s.query(LostAnimal).all()
-                found_reports = s.query(FoundReport).all()
-                
-                all_posts = []
-
-                # Lógica de Filtro
-                def passes_filter(post, is_lost):
-                    # Filtro por tipo (Perdido/Encontrado)
-                    current_type = "Perdido" if is_lost else "Encontrado"
-                    if type_filter != "Qualquer" and type_filter != current_type: return False
-                    
-                    # Filtro por Espécie
-                    post_species = post.species or ""
-                    if species_filter.lower() != "qualquer" and post_species.lower() != species_filter.lower():
-                        return False
-                        
-                    # Filtro por termo (Nome, Localização, Descrição)
-                    if search_term:
-                        term = search_term.lower()
-                        # Campos relevantes para LostAnimal
-                        if is_lost:
-                            if term in (post.name or "").lower(): return True
-                            if term in (post.lost_location or "").lower(): return True
-                            if term in (post.desc_animal or "").lower(): return True
-                        # Campos relevantes para FoundReport
-                        else:
-                            if term in (post.found_location or "").lower(): return True
-                            if term in (post.found_description or "").lower(): return True
-                        
-                        return False # Se não passou em nenhum campo de busca
-                        
-                    return True # Passou nos filtros de Tipo e Espécie ou não tinha filtro de busca.
-
-
-                # Processar posts de Animais Perdidos
-                for a in lost_animals:
-                    if passes_filter(a, is_lost=True):
-                        card = build_post_card(
-                            title=f"{a.name or 'Animal'} perdido", 
-                            location_text=a.lost_location, 
-                            description=a.desc_animal, 
-                            lat=a.latitude, 
-                            lon=a.longitude, 
-                            is_lost=True, 
-                            item_id=a.id,
-                            on_edit_click=None, on_delete_click=None,
-                            image_url=a.image_url # Passa a URL da imagem
-                        )
-                        all_posts.append(card)
-
-                # Processar posts de Relatos Encontrados
-                for r in found_reports:
-                    if passes_filter(r, is_lost=False):
-                        card = build_post_card(
-                            title=f"{r.species or 'Animal'} encontrado", 
-                            location_text=r.found_location, 
-                            description=r.found_description, 
-                            lat=r.latitude, 
-                            lon=r.longitude, 
-                            is_lost=False, 
-                            item_id=r.id,
-                            on_edit_click=None, on_delete_click=None,
-                            image_url=r.image_url # Passa a URL da imagem
-                        )
-                        all_posts.append(card)
-                    
-                # Misturar e adicionar os posts (Ordenando por ID para aparecerem na ordem de criação)
-                all_posts.sort(key=lambda x: x.content.content.controls[1].controls[3].value.split(': ')[1], reverse=True) # Assumindo que o ID é o 4º controle do Column
-
-                posts_list.controls.extend(all_posts)
-
-                if not all_posts:
-                    posts_list.controls.append(ft.Text("Nenhum post disponível ou encontrado com os filtros aplicados."))
-
-        except Exception as e:
-            posts_list.controls.append(ft.Text(f"Erro ao carregar posts: {e}", color=ft.Colors.RED))
-            print(f"Erro ao carregar posts na Home: {e}")
-            
-        page.update()
-
-    # 2. Definição do cabeçalho com o botão de Logout
-    header = ft.Row([
-        ft.Text(f"Bem-vindo, {cur['username']}! (Feed de Posts)", size=24, weight=ft.FontWeight.BOLD),
-        ft.ElevatedButton("Logout", on_click=do_logout_func, 
-                          style=ft.ButtonStyle(bgcolor=ft.Colors.RED_400, color=ft.Colors.WHITE))
-    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+    # --- CONTROLES DE FILTRO ---
+    search_field = ft.TextField(label="Buscar por Descrição ou Local", width=300)
     
-    # 3. Definição dos botões de navegação
-    navigation_buttons = ft.Row(
-        [
-            ft.ElevatedButton("Cadastrar Perdido", on_click=go_to_lost_reg_func),
-            ft.ElevatedButton("Relatar Encontrado", on_click=go_to_found_reg_func),
-            ft.ElevatedButton("Meus Posts", on_click=go_to_my_posts_func),
-            ft.ElevatedButton("Ver Mapa", on_click=go_to_map_func),
-        ],
-        wrap=True,
-        alignment=ft.MainAxisAlignment.START
-    )
-
-    # --- CAMPOS DE FILTRO (NOVO) ---
-    search_field = ft.TextField(
-        label="Buscar por nome, endereço ou descrição", 
-        width=300, 
-        on_submit=lambda e: load_and_display_posts(search_field.value, species_dropdown.value, type_dropdown.value)
-    )
-    
-    species_options = [ft.dropdown.Option(s) for s in ["Qualquer", "Cachorro", "Gato", "Outro"]]
+    # Assumindo que você tem uma lista de espécies únicas
+    species_options = ["Qualquer", "Cachorro", "Gato", "Pássaro", "Outro"] 
     species_dropdown = ft.Dropdown(
         label="Espécie",
-        options=species_options,
+        options=[ft.dropdown.Option(s) for s in species_options],
         width=150,
         value="Qualquer"
     )
@@ -147,7 +39,93 @@ def show_home(page, state, go_to_login_func, go_to_lost_reg_func, go_to_found_re
         width=150,
         value="Qualquer"
     )
-    
+
+    # --- FUNÇÃO PARA CARREGAR E EXIBIR OS POSTS (LÓGICA DE FILTRO) ---
+    def load_and_display_posts(search_term="", species_filter="", type_filter=""):
+        posts_list.controls.clear()
+        
+        # Converte para minúsculas para busca insensível a maiúsculas/minúsculas
+        search_term = search_term.lower()
+        species_filter = species_filter.lower()
+        type_filter = type_filter.lower()
+        
+        try:
+            with session_scope() as s:
+                # 4.1. Carregar todos os posts
+                lost_animals = s.query(LostAnimal).all()
+                found_reports = s.query(FoundReport).all()
+                
+                all_posts = []
+
+                # Lógica de Filtro
+                def passes_filter(post, is_lost):
+                    # Filtro por tipo (Perdido/Encontrado)
+                    current_type = "perdido" if is_lost else "encontrado"
+                    if type_filter != "qualquer" and type_filter != current_type: 
+                        return False
+                    
+                    # Filtro por espécie
+                    post_species = post.species.lower() if post.species else ""
+                    if species_filter != "qualquer" and species_filter not in post_species:
+                        return False
+
+                    # Filtro de busca (Descrição/Localização)
+                    if search_term:
+                        desc = post.desc_animal.lower() if is_lost and post.desc_animal else post.found_description.lower() if not is_lost and post.found_description else ""
+                        loc = post.lost_location.lower() if is_lost and post.lost_location else post.found_location.lower() if not is_lost and post.found_location else ""
+                        
+                        if search_term not in desc and search_term not in loc:
+                            return False
+                    
+                    return True # Passou em todos os filtros
+
+                
+                # Aplica filtros e prepara cards
+                for a in lost_animals:
+                    if passes_filter(a, is_lost=True):
+                        # CHAMADA CORRIGIDA: Passando 'page'
+                        card = build_post_card(
+                            page, # <--- CORREÇÃO AQUI: O primeiro argumento é 'page'
+                            title=a.name or "Animal perdido",
+                            location_text=a.lost_location,
+                            description=a.desc_animal,
+                            lat=a.latitude,
+                            lon=a.longitude,
+                            is_lost=True,
+                            item_id=a.id,
+                            on_edit_click=None, # Feed global não tem edição/exclusão
+                            on_delete_click=None,
+                            image_url=a.image_url 
+                        )
+                        posts_list.controls.append(card)
+
+                for r in found_reports:
+                    if passes_filter(r, is_lost=False):
+                        # CHAMADA CORRIGIDA: Passando 'page'
+                        card = build_post_card(
+                            page, # <--- CORREÇÃO AQUI: O primeiro argumento é 'page'
+                            title=r.species or "Animal encontrado",
+                            location_text=r.found_location,
+                            description=r.found_description,
+                            lat=r.latitude,
+                            lon=r.longitude,
+                            is_lost=False,
+                            item_id=r.id,
+                            on_edit_click=None,
+                            on_delete_click=None,
+                            image_url=r.image_url 
+                        )
+                        posts_list.controls.append(card)
+
+                if not posts_list.controls:
+                    posts_list.controls.append(ft.Text("Nenhum registro encontrado com os filtros aplicados."))
+            
+        except Exception as e:
+            posts_list.controls.append(ft.Text(f"Erro ao carregar posts: {e}", color=ft.Colors.RED))
+            print(f"Erro ao carregar posts no home_view: {e}")
+            
+        page.update()
+
     def apply_filters(e):
         load_and_display_posts(search_field.value, species_dropdown.value, type_dropdown.value)
     
@@ -174,17 +152,37 @@ def show_home(page, state, go_to_login_func, go_to_lost_reg_func, go_to_found_re
     ], alignment=ft.MainAxisAlignment.START, wrap=True)
 
 
-    # 5. Adição dos controles à página
+    # 2. Definição do cabeçalho com o botão de Logout
+    header = ft.Row([
+        ft.Text(f"Bem-vindo, {cur['username']}!", size=24, weight=ft.FontWeight.BOLD),
+        # Usa o novo argumento 'do_logout_func'
+        ft.ElevatedButton("Logout", on_click=do_logout_func, 
+                          style=ft.ButtonStyle(bgcolor=ft.Colors.RED_400, color=ft.Colors.WHITE))
+    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+    
+    # 3. Definição dos botões de navegação
+    navigation_buttons = ft.Row(
+        [
+            ft.ElevatedButton("Cadastrar Animal Perdido", on_click=go_to_lost_reg_func),
+            ft.ElevatedButton("Relatar Animal Encontrado", on_click=go_to_found_reg_func),
+            ft.ElevatedButton("Meus Posts", on_click=go_to_my_posts_func),
+            ft.ElevatedButton("Ver Mapa", on_click=go_to_map_func),
+        ],
+        wrap=True,
+        alignment=ft.MainAxisAlignment.CENTER
+    )
+
+    # 4. Adição dos controles à página
     page.add(
         header,
         ft.Divider(),
         navigation_buttons,
+        ft.Text("Feed Global de Registros (Perdidos e Encontrados)", size=18, weight=ft.FontWeight.BOLD),
         ft.Divider(height=10),
-        ft.Text("Filtros:", size=16, weight=ft.FontWeight.BOLD),
-        search_controls, 
+        search_controls,
         ft.Divider(height=10),
-        posts_list # Onde os posts serão exibidos
+        posts_list # O ListView para exibir os posts
     )
     
-    # Carrega os posts na primeira vez
-    load_and_display_posts()
+    # Carrega os posts iniciais (sem filtro)
+    load_and_display_posts(search_field.value, species_dropdown.value, type_dropdown.value)
