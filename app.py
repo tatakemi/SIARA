@@ -1,4 +1,5 @@
 # app.py
+
 import flet as ft
 import webbrowser
 import os
@@ -47,7 +48,8 @@ def main(page: ft.Page):
         "current_user": None, 
         "map_port": None,
         "edit_lost_id": None, 
-        "edit_found_id": None 
+        "edit_found_id": None,
+        "post_data_for_edit": None # NOVO: Dicionário para dados de edição
     }
 
     # ---- 3. Utilitários e Funções Auxiliares ----
@@ -69,44 +71,101 @@ def main(page: ft.Page):
         show_snack("Sessão encerrada.", is_error=True)
 
     # ---- 4. Handlers de Ação (Edição e Exclusão) ----
-    # Essa é a seção corrigida na primeira interação.
-
+    
     def _handle_edit_post_logic(item_id, is_lost):
-        """Define o ID do item a ser editado no estado e navega para o formulário de registro."""
+        """
+        Define o ID do item a ser editado no estado, CARREGA OS DADOS SERIALIZADOS
+        PARA UM DICIONÁRIO e navega para o formulário de registro.
+        (CORREÇÃO DO DetachedInstanceError)
+        """
         state["edit_lost_id"] = None
         state["edit_found_id"] = None
+        state["post_data_for_edit"] = None 
         
-        if is_lost:
-            state["edit_lost_id"] = item_id
-            route_logics['lost_reg']() 
-        else:
-            state["edit_found_id"] = item_id
-            route_logics['found_reg']() 
+        try:
+            with session_scope() as s:
+                current_user_id = state["current_user"]["id"]
+                post = None
+
+                if is_lost:
+                    # 1. Busca o LostAnimal
+                    post = s.query(LostAnimal).filter_by(id=item_id, owner_id=current_user_id).first()
+                    if post:
+                        # 2. Serializa o objeto para dicionário ANTES da sessão fechar
+                        state["post_data_for_edit"] = {
+                            'id': post.id, 
+                            'name': post.name, 
+                            'species': post.species, 
+                            'lost_location': post.lost_location, 
+                            'desc_animal': post.desc_animal, 
+                            'contact': post.contact, 
+                            'latitude': post.latitude, 
+                            'longitude': post.longitude, 
+                            'image_url': post.image_url
+                        }
+                        state["edit_lost_id"] = item_id # Mantém o ID como flag
+                        route_logics['lost_reg']() 
+                    else:
+                        show_snack("Postagem de animal perdido não encontrada ou não pertence a você.", is_error=True)
+                else:
+                    # 1. Busca o FoundReport
+                    post = s.query(FoundReport).filter_by(id=item_id, finder_id=current_user_id).first()
+                    if post:
+                        # 2. Serializa o objeto para dicionário ANTES da sessão fechar
+                        state["post_data_for_edit"] = {
+                            'id': post.id, 
+                            'species': post.species, 
+                            'found_description': post.found_description, 
+                            'found_location': post.found_location,
+                            # Converte data para string para evitar DetachedInstanceError
+                            'found_date': str(post.found_date) if post.found_date else "", 
+                            'latitude': post.latitude, 
+                            'longitude': post.longitude, 
+                            'image_url': post.image_url
+                        }
+                        state["edit_found_id"] = item_id # Mantém o ID como flag
+                        route_logics['found_reg']() 
+                    else:
+                        show_snack("Relato de animal encontrado não encontrado ou não pertence a você.", is_error=True)
+        except Exception as e:
+            print(f"Erro ao carregar dados para edição: {e}")
+            show_snack(f"Erro ao carregar dados para edição: {e}", is_error=True)
+
 
     def create_edit_handler(item_id, is_lost):
         """Cria o handler de click para o botão Editar."""
+        # Retorna a lambda que será o handler de click para o IconButton
         return lambda e: _handle_edit_post_logic(item_id, is_lost)
         
     def _handle_delete_post_logic(item_id, is_lost):
         """Exclui o post e recarrega a tela de Meus Posts."""
+        success_message = None 
+        
         try:
             with session_scope() as s:
                 current_user_id = state["current_user"]["id"]
                 
+                # Usando synchronize_session='fetch' para garantir que o BD atualize
                 if is_lost:
-                    s.query(LostAnimal).filter_by(id=item_id, owner_id=current_user_id).delete()
-                    show_snack("Animal perdido excluído com sucesso.")
+                    s.query(LostAnimal).filter_by(id=item_id, owner_id=current_user_id).delete(synchronize_session='fetch')
+                    success_message = "Animal perdido excluído com sucesso."
                 else:
-                    s.query(FoundReport).filter_by(id=item_id, finder_id=current_user_id).delete()
-                    show_snack("Relato de animal encontrado excluído com sucesso.")
+                    s.query(FoundReport).filter_by(id=item_id, finder_id=current_user_id).delete(synchronize_session='fetch')
+                    success_message = "Relato de animal encontrado excluído com sucesso."
             
-            # Recarrega a view de posts
+            # 1. Recarrega a view de posts APÓS a sessão ser fechada (com commit)
             route_logics['my_posts']() 
+            
+            # 2. Exibe o snackbar APÓS a view ser recarregada
+            if success_message:
+                 show_snack(success_message)
+                 
         except Exception as ex:
             print(f"Erro ao excluir postagem: {ex}")
             show_snack("Erro ao excluir postagem. Verifique se o item existe.", is_error=True)
 
     def create_delete_handler(item_id, is_lost):
+        # Retorna a lambda que será o handler de click para o IconButton
         return lambda e: _handle_delete_post_logic(item_id, is_lost)
 
     # ---- 5. Definição das Funções de Navegação (Router) ----
@@ -128,8 +187,8 @@ def main(page: ft.Page):
         page, 
         state, 
         go_to_home, 
-        create_edit_handler,   
-        create_delete_handler, 
+        create_edit_handler,   # Necessário para my_posts_view.py chamar (sem partial lá)
+        create_delete_handler, # Necessário para my_posts_view.py chamar (sem partial lá)
         show_snack             
     )
     route_logics['lost_reg'] = partial(show_lost_registration, page, state, go_to_home, show_snack)
