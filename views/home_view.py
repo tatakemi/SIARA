@@ -1,4 +1,8 @@
+# home_view.py
 import flet as ft
+from models import LostAnimal, FoundReport, session_scope 
+# Importa a função do arquivo 'my_posts_view.py' para reutilização
+from views.my_posts_view import build_post_card 
 
 # A assinatura AGORA tem 8 argumentos
 def show_home(page, state, go_to_login_func, go_to_lost_reg_func, go_to_found_reg_func, go_to_my_posts_func, go_to_map_func, do_logout_func):
@@ -13,7 +17,6 @@ def show_home(page, state, go_to_login_func, go_to_lost_reg_func, go_to_found_re
     # 2. Definição do cabeçalho com o botão de Logout
     header = ft.Row([
         ft.Text(f"Bem-vindo, {cur['username']}!", size=24, weight=ft.FontWeight.BOLD),
-        # Usa o novo argumento 'do_logout_func'
         ft.ElevatedButton("Logout", on_click=do_logout_func, 
                           style=ft.ButtonStyle(bgcolor=ft.Colors.RED_400, color=ft.Colors.WHITE))
     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
@@ -30,17 +33,67 @@ def show_home(page, state, go_to_login_func, go_to_lost_reg_func, go_to_found_re
         alignment=ft.MainAxisAlignment.CENTER
     )
 
-    # 4. Adição dos controles à página
+    # --- 4. NOVO: Carregamento e Exibição dos Posts ---
+    all_posts = []
+    
+    try:
+        with session_scope() as s:
+            # Busca todos os posts, ordenados por ID para ter os mais recentes primeiro
+            lost_animals = s.query(LostAnimal).order_by(LostAnimal.id.desc()).all()
+            found_reports = s.query(FoundReport).order_by(FoundReport.id.desc()).all()
+
+            # Cria os cards de posts para animais perdidos
+            for animal in lost_animals:
+                # Passamos None para os handlers, pois a Home não deve ter botões de Edição/Exclusão
+                card = build_post_card(
+                    title=f"🚨 PERDIDO: {animal.species or 'Animal'} - {animal.name or 'Sem nome'}", 
+                    location_text=animal.lost_location, 
+                    description=animal.desc_animal, 
+                    lat=animal.latitude, 
+                    lon=animal.longitude, 
+                    is_lost=True, 
+                    item_id=animal.id,
+                    on_edit_click=None,
+                    on_delete_click=None
+                )
+                all_posts.append(card)
+
+            # Cria os cards de posts para relatos de encontrados
+            for report in found_reports:
+                card = build_post_card(
+                    title=f"✅ ENCONTRADO: {report.species or 'Animal'}", 
+                    location_text=report.found_location, 
+                    description=report.found_description, 
+                    lat=report.latitude, 
+                    lon=report.longitude, 
+                    is_lost=False, 
+                    item_id=report.id,
+                    on_edit_click=None,
+                    on_delete_click=None
+                )
+                all_posts.append(card)
+                
+    except Exception as e:
+        print(f"Erro ao carregar todos os posts: {e}")
+        all_posts.append(ft.Text(f"Erro ao carregar posts: {e}", color=ft.Colors.RED))
+        
+    # Container/ListView para os posts com rolagem
+    posts_list_view = ft.ListView(
+        controls=all_posts if all_posts else [ft.Text("Nenhum registro encontrado no sistema.")], 
+        spacing=10, 
+        expand=True,
+        auto_scroll=False,
+        padding=ft.padding.only(top=10, bottom=10)
+    )
+
+    # 5. Adição dos controles à página
     page.add(
         header,
         ft.Divider(),
         navigation_buttons,
-        ft.Text("Use o menu acima para gerenciar seus posts e o mapa para ver posts de outros usuários.", 
-                size=14, color=ft.Colors.BLACK54)
+        ft.Text("Últimos Registros de Animais (Perdidos e Encontrados):", size=18, weight=ft.FontWeight.BOLD),
+        posts_list_view, 
+        ft.Text("Use o menu de navegação para interagir com o sistema.")
     )
-    page.update()
 
-# Garante que a função exportada é show_home
-# show_home é a própria função, mas definida por convenção
-# Se o seu arquivo só tiver 'show_home', você pode remover esta linha
-# show_home = show_home
+    page.update()
