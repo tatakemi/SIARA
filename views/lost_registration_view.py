@@ -150,11 +150,11 @@ def show_lost_registration(page, state, go_to_home_func, show_snack_func):
         if file_path_chosen:
             # Lógica de upload (assumindo que salva o arquivo e retorna a URL)
             try:
-                # Exemplo: Simulação de upload para a pasta `map_static`
+                # Exemplo: Simulação de upload para a pasta `static/images`
                 filename_to_save = f"{cur['id']}_{int(time.time())}_{file_name_chosen}"
-                target_path = os.path.join(os.getcwd(), "map_static", filename_to_save)
+                target_path = os.path.join(os.getcwd(), "static/images", filename_to_save)
                 shutil.copyfile(file_path_chosen, target_path)
-                image_url_to_save = f"/map_static/{filename_to_save}" # URL acessível pelo servidor local
+                image_url_to_save = f"/images/{filename_to_save}" # URL acessível pelo servidor local
             except Exception as up_ex:
                 print(f"Erro ao salvar arquivo de imagem: {up_ex}")
                 show_snack_func("Erro ao salvar imagem. Registrando sem imagem.", is_error=True)
