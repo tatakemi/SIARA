@@ -1,7 +1,7 @@
 import flet as ft
 from models import LostAnimal, FoundReport, session_scope 
 from functools import partial
-from urllib.parse import quote # <-- CORREÇÃO: Usando a função de URL encode padrão do Python
+from urllib.parse import quote 
 
 # Tenta importar do serviço de geocoding (necessário para a imagem de mapa)
 try:
@@ -12,6 +12,7 @@ except ImportError:
         return "" 
 
 # --- 1. Função Auxiliar para Construir o Card (Post Card) ---
+# A função build_post_card recebe dados e handlers
 def build_post_card(page: ft.Page, title, location_text, description, lat, lon, is_lost, item_id, on_edit_click, on_delete_click, image_url=None):
     
     color = ft.Colors.RED_500 if is_lost else ft.Colors.GREEN_500
@@ -22,8 +23,8 @@ def build_post_card(page: ft.Page, title, location_text, description, lat, lon, 
     
     base_url = "https://www.google.com/search?q=ajuda+animal+perdido" 
     if lat is not None and lon is not None:
+         # Linha corrigida para evitar URL incompleta:
          base_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
-    
     
     # 1. Compartilhar no Facebook (USANDO quote)
     facebook_share_link = f"https://www.facebook.com/sharer/sharer.php?u={quote(base_url)}&quote={quote(share_text)}"
@@ -34,13 +35,13 @@ def build_post_card(page: ft.Page, title, location_text, description, lat, lon, 
     share_buttons = ft.Row([
         ft.Text("Compartilhar:", size=10, weight=ft.FontWeight.BOLD),
         ft.IconButton(
-            ft.Icons.SHARE,  # <-- CORREÇÃO: Usando ícone genérico de SHARE
+            ft.Icons.FACEBOOK, 
             icon_color=ft.Colors.BLUE_900, 
             tooltip="Compartilhar no Facebook",
             on_click=lambda e: page.launch_url(facebook_share_link)
         ),
         ft.IconButton(
-            ft.Icons.MESSAGE,  # <-- CORREÇÃO: Usando ícone genérico de MESSAGE (ou SHARE)
+            ft.Icons.MESSENGER_ROUNDED, 
             icon_color=ft.Colors.GREEN_700, 
             tooltip="Compartilhar no WhatsApp",
             on_click=lambda e: page.launch_url(whatsapp_share_link)
@@ -106,53 +107,81 @@ def show_my_posts(page, state, go_to_home_func, create_edit_handler_func, create
     my_lost_list = ft.ListView(expand=1, spacing=10, padding=20)
     my_found_list = ft.ListView(expand=1, spacing=10, padding=20)
 
+    # Listas para armazenar dados desconectados da sessão
+    lost_animals_data = []
+    found_reports_data = []
+
     try:
+        # ---- 1. Carregamento dos Dados (Dentro da Sessão) ----
         with session_scope() as s:
-            # 1. Posts de Animais Perdidos
-            lost_animals = s.query(LostAnimal).filter_by(owner_id=cur["id"]).all()
-            for a in lost_animals:
-                # Handlers com o ID e tipo de post fixados (partial)
-                edit_handler = partial(create_edit_handler_func, item_id=a.id, is_lost=True)
-                delete_handler = partial(create_delete_handler_func, item_id=a.id, is_lost=True)
-                
-                # Certifique-se de passar 'page' para build_post_card
-                card = build_post_card(
-                    page, 
-                    title=a.name or "Animal perdido", 
-                    location_text=a.lost_location, 
-                    description=a.desc_animal, 
-                    lat=a.latitude, 
-                    lon=a.longitude, 
-                    is_lost=True, 
-                    item_id=a.id,
-                    on_edit_click=edit_handler,     
-                    on_delete_click=delete_handler,
-                    image_url=a.image_url 
-                )
-                my_lost_list.controls.append(card)
+            
+            # Posts de Animais Perdidos
+            for a in s.query(LostAnimal).filter_by(owner_id=cur["id"]).all():
+                # Conversão para dicionário para desanexar da sessão
+                lost_animals_data.append({
+                    'id': a.id,
+                    'name': a.name,
+                    'location': a.lost_location,
+                    'desc': a.desc_animal,
+                    'lat': a.latitude,
+                    'lon': a.longitude,
+                    'image_url': a.image_url
+                })
 
-            # 2. Relatos de Animais Encontrados
-            found_reports = s.query(FoundReport).filter_by(finder_id=cur["id"]).all()
-            for r in found_reports:
-                # Handlers com o ID e tipo de post fixados (partial)
-                edit_handler = partial(create_edit_handler_func, item_id=r.id, is_lost=False)
-                delete_handler = partial(create_delete_handler_func, item_id=r.id, is_lost=False)
+            # Relatos de Animais Encontrados
+            for r in s.query(FoundReport).filter_by(finder_id=cur["id"]).all():
+                # Conversão para dicionário para desanexar da sessão
+                found_reports_data.append({
+                    'id': r.id,
+                    'species': r.species,
+                    'location': r.found_location,
+                    'desc': r.found_description,
+                    'lat': r.latitude,
+                    'lon': r.longitude,
+                    'image_url': r.image_url
+                })
+        
+        # ---- 2. Construção da UI (Fora da Sessão) ----
+        
+        # Posts de Animais Perdidos
+        for a in lost_animals_data:
+            edit_handler = create_edit_handler_func(item_id=a['id'], is_lost=True)
+            delete_handler = create_delete_handler_func(item_id=a['id'], is_lost=True)
+            
+            card = build_post_card(
+                page, 
+                title=a['name'] or "Animal perdido", 
+                location_text=a['location'], 
+                description=a['desc'], 
+                lat=a['lat'], 
+                lon=a['lon'], 
+                is_lost=True, 
+                item_id=a['id'],
+                on_edit_click=edit_handler,     
+                on_delete_click=delete_handler,
+                image_url=a['image_url'] 
+            )
+            my_lost_list.controls.append(card)
 
-                # Certifique-se de passar 'page' para build_post_card
-                card = build_post_card(
-                    page, 
-                    title=f"{r.species or 'Animal'} encontrado", 
-                    location_text=r.found_location, 
-                    description=r.found_description, 
-                    lat=r.latitude, 
-                    lon=r.longitude, 
-                    is_lost=False, 
-                    item_id=r.id,
-                    on_edit_click=edit_handler,     
-                    on_delete_click=delete_handler,
-                    image_url=r.image_url 
-                )
-                my_found_list.controls.append(card)
+        # Relatos de Animais Encontrados
+        for r in found_reports_data:
+            edit_handler = create_edit_handler_func(item_id=r['id'], is_lost=False)
+            delete_handler = create_delete_handler_func(item_id=r['id'], is_lost=False)
+
+            card = build_post_card(
+                page, 
+                title=f"{r['species'] or 'Animal'} encontrado", 
+                location_text=r['location'], 
+                description=r['desc'], 
+                lat=r['lat'], 
+                lon=r['lon'], 
+                is_lost=False, 
+                item_id=r['id'],
+                on_edit_click=edit_handler,     
+                on_delete_click=delete_handler,
+                image_url=r['image_url'] 
+            )
+            my_found_list.controls.append(card)
 
     except Exception as e:
         show_snack_func(f"Erro ao carregar posts: {e}", is_error=True)
