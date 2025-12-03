@@ -47,19 +47,31 @@ def show_lost_registration(page, state, go_to_home_func, show_snack_func):
         return current_post_data.get(key, default) if current_post_data else default
 
     # --- 2. DEFINIÇÃO DOS CAMPOS (e pré-preenchimento) ---
-    # Agora usa get_val()
+    
+    initial_lat_raw = get_val('latitude')
+    initial_lon_raw = get_val('longitude')
+
+    # **********************************************
+    # CORREÇÃO DO ERRO: 
+    # Verifica se o valor é numérico antes de formatar.
+    # Se for string (ex: "") ou None, usa ""
+    # **********************************************
+    if isinstance(initial_lat_raw, (float, int)):
+        initial_lat = f"{initial_lat_raw:.6f}"
+    else:
+        initial_lat = "" 
+        
+    if isinstance(initial_lon_raw, (float, int)):
+        initial_lon = f"{initial_lon_raw:.6f}"
+    else:
+        initial_lon = "" 
+    # **********************************************
+    
     name = ft.TextField(label="Nome do animal", value=get_val('name'))
     species = ft.TextField(label="Espécie (opcional)", value=get_val('species'))
     location = ft.TextField(label="Onde foi perdido (endereço ou descrição)", value=get_val('lost_location'))
     desc = ft.TextField(label="Descrição do animal (opcional)", value=get_val('desc_animal'))
     contact = ft.TextField(label="Contato (opcional)", value=get_val('contact'))
-    
-    # Coordenadas pré-preenchidas
-    initial_lat_raw = get_val('latitude')
-    initial_lon_raw = get_val('longitude')
-
-    initial_lat = f"{initial_lat_raw:.6f}" if initial_lat_raw is not None else ""
-    initial_lon = f"{initial_lon_raw:.6f}" if initial_lon_raw is not None else ""
 
     lat_field = ft.TextField(label="Latitude (opcional)", value=initial_lat)
     lon_field = ft.TextField(label="Longitude (opcional)", value=initial_lon)
