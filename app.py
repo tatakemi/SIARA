@@ -216,6 +216,9 @@ def main(page: ft.Page):
         
     go_to_login()
 
+import os
 
 if __name__ == "__main__":
-    ft.app(target=main, assets_dir="static")
+    ft.app(target=main)
+    port = int(os.environ.get('PORT', 3000))
+    app.run(host='0.0.0.0', port=port)
