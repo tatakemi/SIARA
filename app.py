@@ -1,6 +1,7 @@
 # app.py
 
 import flet as ft
+import flet_map as map
 import webbrowser
 import os
 import threading
@@ -18,10 +19,36 @@ from models import User, LostAnimal, FoundReport, session_scope
 
 from models import User, LostAnimal, FoundReport, session_scope 
 from services.geocoding import geocode_address # Exemplo de importação
-from services.map_server import (
-    find_free_port, start_map_server, stop_map_server, 
-    write_base_map_html, LAST_PICK
-)
+
+def create_flet_map(center_lat, center_lon, markers=None, on_click_handler=None, zoom=15):
+    """Cria um ft.Map com o centro e marcadores especificados."""
+    if markers is None:
+        markers = []
+
+    # # Adiciona um marcador no centro (para pré-visualização)
+    # if center_lat is not None and center_lon is not None:
+    #     markers.append(
+    #         map.Marker(
+    #             coordinate=(center_lat, center_lon),
+    #             # O ícone padrão é um ponto
+    #         )
+    #     )
+
+    # Baseado em OpenStreetMap
+    return map.Map(
+        center=map.LatLng(center_lat or 0, center_lon or 0),
+        zoom=zoom,
+        controls=[
+            ft.TileLayer(
+                url_template="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+            )
+        ],
+        markers=markers,
+        on_long_press=on_click_handler, # Use on_long_press ou on_tap para interação
+        width=600,
+        height=400,
+        expand=False,
+    )
 
 # Importação das VIEWS
 from views.login_view import show_login
@@ -39,8 +66,6 @@ def main(page: ft.Page):
     page.window_width = 1000
     page.window_height = 700
     page.padding = 20
-    page.on_disconnect = lambda e: stop_map_server() 
-    page.on_close = lambda e: stop_map_server()
     page.theme_mode = ft.ThemeMode.LIGHT
 
     # Estado compartilhado
@@ -191,9 +216,9 @@ def main(page: ft.Page):
         create_delete_handler, # Necessário para my_posts_view.py chamar (sem partial lá)
         show_snack             
     )
-    route_logics['lost_reg'] = partial(show_lost_registration, page, state, go_to_home, show_snack)
-    route_logics['found_reg'] = partial(show_found_registration, page, state, go_to_home, show_snack)
-    route_logics['map'] = partial(show_map, page, state, go_to_home)
+    route_logics['lost_reg'] = partial(show_lost_registration, page, state, go_to_home, show_snack , go_to_map)
+    route_logics['found_reg'] = partial(show_found_registration, page, state, go_to_home, show_snack, go_to_map)
+    route_logics['map'] = partial(show_map, page, state, route_logics)  
     route_logics['home'] = partial(
         show_home, 
         page, 
@@ -206,13 +231,6 @@ def main(page: ft.Page):
         do_logout
     )
 
-    # ---- 6. Inicialização dos Serviços e Rota Inicial ----
-    
-    write_base_map_html()
-    if state.get("map_port") is None:
-        port = find_free_port()
-        state["map_port"] = port
-        start_map_server(port)
         
     go_to_login()
 
