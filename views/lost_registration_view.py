@@ -42,7 +42,7 @@ def show_lost_registration(page, state, go_to_home_func, show_snack_func, go_to_
     species = ft.TextField(label="Espécie / Raça", value=post_data.get("species", "") if is_edit else "")
     location = ft.TextField(label="Última Localização Vista", value=post_data.get("lost_location", "") if is_edit else "")
     desc = ft.TextField(label="Descrição", multiline=True,
-                        value=post_data.get("desc_animal", "") if is_edit else "")
+                         value=post_data.get("desc_animal", "") if is_edit else "")
 
     contact_val = post_data.get("contact") if is_edit else cur.get("contact", "")
     contact = ft.TextField(label="Contato", value=contact_val)
@@ -99,6 +99,8 @@ def show_lost_registration(page, state, go_to_home_func, show_snack_func, go_to_
             location.value = addr
 
         update_preview_from_fields()
+        # Limpa o estado após o uso (Linha original restaurada)
+        state["picked_coords"] = None
 
     # ====================================================
     # 5) Upload de imagem
@@ -108,6 +110,27 @@ def show_lost_registration(page, state, go_to_home_func, show_snack_func, go_to_
     file_name_chosen = None
 
     current_image_url = post_data.get("image_url") if is_edit else None
+    
+    # Prepara a URL para exibição
+    display_image_url = current_image_url if current_image_url and current_image_url.startswith("/assets/images/") else None
+
+    image_preview = ft.Container(
+        content=ft.Image(
+            src=display_image_url,
+            width=100,
+            height=100,
+            fit=ft.ImageFit.COVER,
+            border_radius=ft.border_radius.all(8)
+        ) if display_image_url else ft.Container(
+            width=100, 
+            height=100, 
+            bgcolor=ft.colors.BLUE_GREY_100, 
+            border_radius=ft.border_radius.all(8),
+            content=ft.Text("Sem Imagem", size=10, text_align=ft.TextAlign.CENTER, color=ft.colors.BLUE_GREY_400),
+            alignment=ft.alignment.center
+        ),
+        margin=ft.margin.only(right=15)
+    )
 
     upload_status = ft.Text(
         f"Imagem atual: {current_image_url.split('/')[-1]}" if current_image_url else "Nenhuma imagem selecionada."
@@ -134,6 +157,8 @@ def show_lost_registration(page, state, go_to_home_func, show_snack_func, go_to_
 
     def open_map(e):
         state["return_to"] = "lost_reg"
+        # Lógica de mapa ORIGINAL:
+        # Apenas chama a função go_to_map_func()
         go_to_map_func()
 
     # ====================================================
@@ -166,13 +191,24 @@ def show_lost_registration(page, state, go_to_home_func, show_snack_func, go_to_
         image_url = current_image_url
         if file_path_chosen:
             try:
+                # 1. Cria um nome de arquivo único
                 filename = f"{cur['id']}_{int(time.time())}_{file_name_chosen}"
-                target = os.path.join(os.getcwd(), "static/images", filename)
+                
+                # 2. Define o caminho alvo DENTRO da pasta de assets
+                image_folder = os.path.join(os.getcwd(), "static", "images") # Caminho absoluto do servidor
+                os.makedirs(image_folder, exist_ok=True) # Cria a pasta se não existir
+                target = os.path.join(image_folder, filename)
+                
+                # 3. Copia o arquivo do caminho temporário para o destino
                 shutil.copyfile(file_path_chosen, target)
-                image_url = f"/images/{filename}"
+                
+                # 4. CORRIGIDO: Deve ser /assets/subpasta/nome_do_arquivo
+                image_url = f"/assets/images/{filename}" 
+                
             except Exception as ex:
                 print("Erro upload:", ex)
-                show_snack_func("Falha ao salvar imagem.", is_error=True)
+                show_snack_func(f"Falha ao salvar imagem localmente: {ex}", is_error=True)
+                return # Interrompe o registro se o upload falhar
 
         # Gravação no banco
         try:
@@ -191,7 +227,8 @@ def show_lost_registration(page, state, go_to_home_func, show_snack_func, go_to_
                     post.contact = contact.value
                     post.latitude = lat
                     post.longitude = lon
-                    post.image_url = image_url
+                    # Salva a URL CORRIGIDA (que deve ser /assets/images/...)
+                    post.image_url = image_url 
 
                     s.commit()
 
@@ -209,7 +246,8 @@ def show_lost_registration(page, state, go_to_home_func, show_snack_func, go_to_
                         contact=contact.value,
                         latitude=lat,
                         longitude=lon,
-                        image_url=image_url,
+                        # Salva a URL CORRIGIDA
+                        image_url=image_url, 
                         owner_id=cur["id"]
                     )
 
@@ -228,6 +266,17 @@ def show_lost_registration(page, state, go_to_home_func, show_snack_func, go_to_
                     lon_field.value = ""
                     preview_image.src = ""
                     upload_status.value = "Nenhuma imagem selecionada."
+                    
+                    # Reseta o preview da imagem
+                    image_preview.content = ft.Container(
+                        width=100, 
+                        height=100, 
+                        bgcolor=ft.colors.BLUE_GREY_100, 
+                        border_radius=ft.border_radius.all(8),
+                        content=ft.Text("Sem Imagem", size=10, text_align=ft.TextAlign.CENTER, color=ft.colors.BLUE_GREY_400),
+                        alignment=ft.alignment.center
+                    )
+
 
                     page.update()
 
@@ -249,13 +298,41 @@ def show_lost_registration(page, state, go_to_home_func, show_snack_func, go_to_
         contact,
 
         ft.Row([
-            lat_field,
-            lon_field,
+            ft.Container(lat_field, width=200),
+            ft.Container(lon_field, width=200),
             ft.ElevatedButton(
                 "Selecionar no mapa",
                 icon=ft.Icons.MAP,
                 on_click=open_map,
                 style=ft.ButtonStyle(bgcolor=ft.Colors.BLUE_200),
+            ),
+        ], alignment=ft.MainAxisAlignment.START),
+
+        preview_image,
+
+        ft.Text("Upload de imagem:", weight=ft.FontWeight.BOLD),
+        ft.Row([
+             image_preview, # Preview para edição/sem imagem
+             ft.Column([
+                upload_status,
+                ft.ElevatedButton("Escolher imagem", on_click=lambda e: file_picker.pick_files(
+                    allow_multiple=False,
+                    allowed_extensions=["png", "jpg", "jpeg", "webp"] # Limita a tipos de imagem
+                )),
+             ])
+        ], alignment=ft.MainAxisAlignment.START), # Alinhe ao início para melhor layout
+
+        msg,
+
+        ft.Row([
+            ft.ElevatedButton(
+                button_text,
+                on_click=do_register_lost,
+                style=ft.ButtonStyle(bgcolor=ft.Colors.BLUE_600)
+            ),
+            ft.OutlinedButton("Voltar", on_click=lambda e: go_to_home_func())
+        ], alignment=ft.MainAxisAlignment.END)
+    )
             ),
         ], alignment=ft.MainAxisAlignment.START),
 
